@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3361FF">
+<title>Gomes Finance</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--bg:#F5F7FB;--panel:#fff;--ink:#0F172A;--muted:#6B7488;--line:#E9ECF3;--accent:#3361FF;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1020;--panel:#121A2C;--ink:#E7EBF3;--muted:#8D99B0;--line:#1F2A40;--accent:#7090FF;color-scheme:dark}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;display:grid;place-items:center;padding:24px}
+.box{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 24px;text-align:center;box-shadow:0 8px 30px rgba(16,24,40,.06)}
+.logo{width:64px;height:64px;border-radius:18px;display:block;margin:0 auto 14px}
+h1{font-size:20px;margin:0 0 6px}#msg{color:var(--muted);margin:0 0 18px;min-height:22px}
+#actions{display:grid;gap:10px}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:13px 16px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+input{font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.lock{position:fixed;inset:0;z-index:9999;background:var(--bg,#F5F7FB);display:grid;place-items:center;padding:24px}
+</style>
+</head>
+<body>
+<div class="box" id="gate"><img class="logo" src="icon.svg" alt=""><h1>Gomes Finance</h1><p id="msg">…</p><div id="actions"></div></div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+(()=>{
+const CFG={sheet:'198nHJx1TH1AiF60_QwxA43mT2pEJR_TUX5XMP-2JWVk',folder:'19rZigP00ONUyzgOP3p8FSqK4nuVnj03m',file:'hub-app.html',
+ allow:['teachercaiogomes@gmail.com','crisnovais77@gmail.com'],
+ scope:'openid email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly'};
+const PT=(()=>{try{return localStorage.getItem('gf-lang')==='pt'}catch(e){return false}})();
+const tx=(en,pt)=>PT?pt:en;
+(function(){const m=location.hash.match(/cid=([^&]+)/);if(m){localStorage.setItem('gf-cid',decodeURIComponent(m[1]));history.replaceState(null,'',location.pathname);}})();
+const CID=()=>localStorage.getItem('gf-cid');
+const $=s=>document.querySelector(s);
+function ui(msg,btns,html){const m=$('#msg'),a=$('#actions');if(!m)return;m.textContent=msg;a.innerHTML=html||'';for(const [label,fn,cls] of btns||[]){const b=document.createElement('button');b.textContent=label;if(cls)b.className=cls;b.onclick=fn;a.appendChild(b);}}
+/* ---------- device lock (fingerprint / face / PIN) ---------- */
+const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const ub64=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+async function lockCreate(email){const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'Gomes Finance'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:email,displayName:email},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'},timeout:60000}});localStorage.setItem('gf-cred',b64(c.rawId));}
+async function lockCheck(){const id=localStorage.getItem('gf-cred');await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),allowCredentials:[{type:'public-key',id:ub64(id)}],userVerification:'required',timeout:60000}});}
+/* ---------- Google sign-in ---------- */
+let TOKEN=null,EMAIL='';
+function savedToken(){try{const t=JSON.parse(localStorage.getItem('gf-tok')||'null');if(t&&t.exp>Date.now()+60000)return t;}catch(e){}return null;}
+function waitGIS(){return new Promise(r=>{const c=()=>window.google&&google.accounts&&google.accounts.oauth2?r():setTimeout(c,100);c();});}
+async function getToken(){await waitGIS();return new Promise((res,rej)=>{const c=google.accounts.oauth2.initTokenClient({client_id:CID(),scope:CFG.scope,hint:EMAIL||localStorage.getItem('gf-email')||undefined,callback:r=>{if(r.error)return rej(new Error(r.error_description||r.error));const t={tok:r.access_token,exp:Date.now()+r.expires_in*1000};localStorage.setItem('gf-tok',JSON.stringify(t));res(t);},error_callback:e=>rej(new Error(e.type||'popup'))});c.requestAccessToken({prompt:''});});}
+let reauthP=null;
+function reauth(){if(reauthP)return reauthP;reauthP=new Promise(res=>{const d=document.createElement('div');d.className='lock';d.innerHTML=`<div class="box"><img class="logo" src="icon.svg" alt=""><h1>Gomes Finance</h1><p id="msg2" style="color:var(--muted)">${tx('Session expired.','Sessão expirada.')}</p><button id="rb">${tx('Continue with Google','Continuar com o Google')}</button></div>`;document.body.appendChild(d);d.querySelector('#rb').onclick=async()=>{try{TOKEN=await getToken();d.remove();reauthP=null;res();}catch(e){d.querySelector('#msg2').textContent=e.message;}};});return reauthP;}
+async function api(url,opt={},retry=true){if(!TOKEN||TOKEN.exp<Date.now()+30000)await reauth();const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:'Bearer '+TOKEN.tok,'Content-Type':'application/json'}});if(r.status===401&&retry){localStorage.removeItem('gf-tok');TOKEN=null;return api(url,opt,false);}if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,200));return r;}
+/* ---------- Google Sheet database ---------- */
+const SH=`https://sheets.googleapis.com/v4/spreadsheets/${CFG.sheet}/values/`;
+const DB={rows:{},subs:{},pending:0,
+ async load(){const r=await (await api(SH+encodeURIComponent('A2:D'))).json();const rows={};(r.values||[]).forEach((v,i)=>{if(!v[0]||!v[1]||!v[2])return;let d;try{d=JSON.parse(v[2]);}catch(e){return;}(rows[v[0]]=rows[v[0]]||{})[v[1]]={d,row:i+2};});this.rows=rows;},
+ emit(c){const snap={docs:Object.entries(this.rows[c]||{}).map(([id,x])=>({id,data:()=>x.d}))};(this.subs[c]||[]).forEach(cb=>{try{cb(snap)}catch(e){console.error(e)}});},
+ collection(c){const db=this;return{
+  onSnapshot(cb){(db.subs[c]=db.subs[c]||[]).push(cb);setTimeout(()=>db.emit(c),0);return()=>{};},
+  doc(id){return{
+   async set(body){db.pending++;try{const tab=(db.rows[c]=db.rows[c]||{});let ent=tab[id];const vals=[[c,id,JSON.stringify(body),new Date().toISOString()]];
+    if(ent&&ent.p)await ent.p;
+    if(ent&&ent.row){ent.d=body;await api(SH+encodeURIComponent(`A${ent.row}:D${ent.row}`)+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:vals})});}
+    else{ent=tab[id]={d:body,row:null};ent.p=(async()=>{const r=await (await api(SH+encodeURIComponent('A1:D')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:vals})})).json();const m=/!A(\d+)/.exec((r.updates&&r.updates.updatedRange)||'');if(m)ent.row=+m[1];})();await ent.p;ent.p=null;}
+   }finally{db.pending--;}},
+   async delete(){db.pending++;try{const ent=(db.rows[c]||{})[id];if(!ent)return;if(ent.p)await ent.p;delete db.rows[c][id];if(ent.row)await api(SH+encodeURIComponent(`A${ent.row}:D${ent.row}`)+':clear',{method:'POST',body:'{}'});}finally{db.pending--;}}
+  };}};}};
+function startPoll(){setInterval(async()=>{if(document.hidden||DB.pending||reauthP)return;try{await DB.load();Object.keys(DB.subs).forEach(c=>DB.emit(c));}catch(e){}},60000);}
+/* ---------- load the hub page from Drive ---------- */
+async function loadHub(){const q=encodeURIComponent(`'${CFG.folder}' in parents and name='${CFG.file}' and trashed=false`);
+ const l=await (await api(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime%20desc&pageSize=1&fields=files(id,modifiedTime)`)).json();
+ const f=l.files&&l.files[0];if(!f)throw new Error(tx('Hub file not found in Drive.','Arquivo do app não encontrado no Drive.'));
+ try{if(localStorage.getItem('gf-hub-v')===f.id+f.modifiedTime){const h=localStorage.getItem('gf-hub');if(h)return h;}}catch(e){}
+ const h=await (await api(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).text();
+ try{localStorage.setItem('gf-hub',h);localStorage.setItem('gf-hub-v',f.id+f.modifiedTime);}catch(e){}return h;}
+function boot(html){window.claude={use:async n=>n==='db'?DB:null};
+ html=html.replace('<head>','<head><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#3361FF"><link rel="icon" href="icon.svg" type="image/svg+xml">');
+ document.open();document.write(html);document.close();startPoll();armRelock();}
+/* re-lock after 5 minutes in the background */
+function armRelock(){let hidAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden){hidAt=Date.now();return;}if(localStorage.getItem('gf-cred')&&hidAt&&Date.now()-hidAt>300000){const d=document.createElement('div');d.className='lock';d.style.cssText='position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:var(--bg,#F5F7FB)';d.innerHTML=`<button style="font:inherit;font-weight:700;border:0;border-radius:12px;padding:14px 22px;background:#3361FF;color:#fff">${tx('Unlock','Desbloquear')}</button>`;document.body.appendChild(d);d.querySelector('button').onclick=async()=>{try{await lockCheck();d.remove();}catch(e){}};}});}
+/* ---------- flow ---------- */
+async function after(){ui(tx('Loading…','Carregando…'));
+ try{const u=await (await api('https://www.googleapis.com/oauth2/v3/userinfo')).json();EMAIL=(u.email||'').toLowerCase();localStorage.setItem('gf-email',EMAIL);
+  if(!CFG.allow.includes(EMAIL)){localStorage.removeItem('gf-tok');return ui(tx('This account doesn\'t have access.','Esta conta não tem acesso.')+' ('+EMAIL+')',[[tx('Use another account','Usar outra conta'),()=>{localStorage.removeItem('gf-email');next();}]]);}
+  const [hub]=await Promise.all([loadHub(),DB.load()]);
+  if(!localStorage.getItem('gf-cred')&&!localStorage.getItem('gf-nolock')&&window.PublicKeyCredential){
+   return ui(tx('Turn on fingerprint / screen-lock unlock for this phone?','Ativar desbloqueio por digital / bloqueio de tela neste celular?'),[[tx('Turn on','Ativar'),async()=>{try{await lockCreate(EMAIL);}catch(e){}boot(hub);}],[tx('Not now','Agora não'),()=>{localStorage.setItem('gf-nolock','1');boot(hub);},'ghost']]);}
+  boot(hub);
+ }catch(e){ui(tx('Couldn\'t load: ','Não foi possível carregar: ')+e.message,[[tx('Try again','Tentar de novo'),after]]);}}
+function next(){TOKEN=savedToken();if(TOKEN)return after();
+ ui(tx('Sign in to continue.','Entre para continuar.'),[[tx('Continue with Google','Continuar com o Google'),async()=>{try{TOKEN=await getToken();after();}catch(e){ui(tx('Sign-in didn\'t finish: ','O login não terminou: ')+e.message,[[tx('Try again','Tentar de novo'),next]]);}}]]);}
+function setup(){ui(tx('One-time setup: paste the Google Client ID.','Configuração única: cole o Google Client ID.'),[[tx('Save','Salvar'),()=>{const v=$('#cid').value.trim();if(v.endsWith('.apps.googleusercontent.com')){localStorage.setItem('gf-cid',v);main();}else $('#msg').textContent=tx('That doesn\'t look like a Client ID.','Isso não parece um Client ID.');}]],'<input id="cid" placeholder="…apps.googleusercontent.com" autocomplete="off">');}
+function main(){if(!CID())return setup();
+ if(localStorage.getItem('gf-cred'))return ui(tx('Locked','Bloqueado'),[[tx('Unlock','Desbloquear'),async()=>{try{await lockCheck();next();}catch(e){ui(tx('Not unlocked. Try again.','Não desbloqueado. Tente de novo.'),[[tx('Unlock','Desbloquear'),main]]);}}]]);
+ next();}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+main();
+})();
+</script>
+</body>
+</html>
