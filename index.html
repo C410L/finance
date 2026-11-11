@@ -42,6 +42,14 @@ const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g,'-').
 const ub64=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 async function lockCreate(email){const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'Gomes Finance'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:email,displayName:email},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'},timeout:60000}});localStorage.setItem('gf-cred',b64(c.rawId));}
 async function lockCheck(){const id=localStorage.getItem('gf-cred');await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),allowCredentials:[{type:'public-key',id:ub64(id)}],userVerification:'required',timeout:60000}});}
+/* ---------- stay unlocked for a while (like bank apps) ---------- */
+const LOCKMIN=()=>{const r=localStorage.getItem('gf-lockmin');const v=r==null?15:+r;return isNaN(v)?15:v;};
+const fresh=()=>{const m=LOCKMIN();if(m<0)return true;if(m===0)return false;return Date.now()-(+localStorage.getItem('gf-seen')||0)<m*60000;};
+let lastAct=Date.now(),lastSave=0;const touch=()=>{lastAct=Date.now();if(lastAct-lastSave>15000){lastSave=lastAct;try{localStorage.setItem('gf-seen',String(lastAct));}catch(e){}}};
+function startSession(){touch();['pointerdown','keydown','scroll','touchstart'].forEach(ev=>addEventListener(ev,touch,{passive:true,capture:true}));
+ addEventListener('click',()=>{if(TOKEN&&TOKEN.exp<Date.now()+10*60000&&!startSession.busy){startSession.busy=1;getToken().then(t=>{TOKEN=t;}).catch(()=>{}).finally(()=>{startSession.busy=0;});}},true);
+ const idle=()=>{const m=LOCKMIN();if(localStorage.getItem('gf-cred')&&m>0&&Date.now()-lastAct>m*60000){try{localStorage.setItem('gf-seen','0');}catch(e){}location.reload();}};
+ setInterval(idle,30000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){lastAct=Math.max(lastAct,+localStorage.getItem('gf-seen')||0);idle();}else{try{localStorage.setItem('gf-seen',String(lastAct));}catch(e){}}});}
 /* ---------- Google sign-in ---------- */
 let TOKEN=null,EMAIL='';
 function savedToken(){try{const t=JSON.parse(localStorage.getItem('gf-tok')||'null');if(t&&t.exp>Date.now()+60000)return t;}catch(e){}return null;}
@@ -73,7 +81,7 @@ async function loadHub(){const q=encodeURIComponent(`'${CFG.folder}' in parents 
  try{if(localStorage.getItem('gf-hub-v')===f.id+f.modifiedTime){const h=localStorage.getItem('gf-hub');if(h)return h;}}catch(e){}
  const h=await (await api(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).text();
  try{localStorage.setItem('gf-hub',h);localStorage.setItem('gf-hub-v',f.id+f.modifiedTime);}catch(e){}return h;}
-function boot(html){window.claude={use:async n=>n==='db'?DB:null};
+function boot(html){startSession();window.claude={use:async n=>n==='db'?DB:null};
  html=html.replace('<head>','<head><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#3361FF"><link rel="icon" href="icon.svg" type="image/svg+xml">');
  document.open();document.write(html);document.close();startPoll();armRelock();}
 /* re-lock after 5 minutes in the background */
@@ -91,7 +99,7 @@ function next(){TOKEN=savedToken();if(TOKEN)return after();
  ui(tx('Sign in to continue.','Entre para continuar.'),[[tx('Continue with Google','Continuar com o Google'),async()=>{try{TOKEN=await getToken();after();}catch(e){ui(tx('Sign-in didn\'t finish: ','O login não terminou: ')+e.message,[[tx('Try again','Tentar de novo'),next]]);}}]]);}
 function setup(){ui(tx('One-time setup: paste the Google Client ID.','Configuração única: cole o Google Client ID.'),[[tx('Save','Salvar'),()=>{const v=$('#cid').value.trim();if(v.endsWith('.apps.googleusercontent.com')){localStorage.setItem('gf-cid',v);main();}else $('#msg').textContent=tx('That doesn\'t look like a Client ID.','Isso não parece um Client ID.');}]],'<input id="cid" placeholder="…apps.googleusercontent.com" autocomplete="off">');}
 function main(){if(!CID())return setup();
- if(localStorage.getItem('gf-cred'))return ui(tx('Locked','Bloqueado'),[[tx('Unlock','Desbloquear'),async()=>{try{await lockCheck();next();}catch(e){ui(tx('Not unlocked. Try again.','Não desbloqueado. Tente de novo.'),[[tx('Unlock','Desbloquear'),main]]);}}]]);
+ if(localStorage.getItem('gf-cred')&&!fresh())return ui(tx('Locked','Bloqueado'),[[tx('Unlock','Desbloquear'),async()=>{try{await lockCheck();touch();if(!savedToken()){try{TOKEN=await getToken();}catch(_){}}next();}catch(e){ui(tx('Not unlocked. Try again.','Não desbloqueado. Tente de novo.'),[[tx('Unlock','Desbloquear'),main]]);}}]]);
  next();}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 main();
